@@ -6,7 +6,23 @@ Strict human-gated planning (Gates 0–4) before Construction. Workspace scratch
 
 Sibling of [`grok-build-aidlc`](https://github.com/Everwood-Technologies/grok-build-aidlc) (Grok Build / machine-level config). This repo is the **OpenClaw skill package**.
 
-## Install (OpenClaw)
+**ClawHub slug:** [`everwood-aidlc`](https://clawhub.ai/mlwood-dev/everwood-aidlc)  
+(`openclaw-*` slugs are reserved on ClawHub — do not publish as `openclaw-aidlc`.)
+
+## Install
+
+### ClawHub (recommended)
+
+```bash
+# via clawhub CLI
+clawhub install everwood-aidlc
+
+# or via OpenClaw
+openclaw skills install everwood-aidlc
+openclaw skills install everwood-aidlc --global   # all local agents
+```
+
+### From this GitHub repo
 
 ```bash
 # workspace skill (one agent)
@@ -52,11 +68,21 @@ cd assets/cache-ui && bash ./run.sh   # http://127.0.0.1:8787
 
 ## Publish to ClawHub
 
+Use slug **`everwood-aidlc`** (not `openclaw-aidlc` — protected namespace).
+
 ```bash
 npm i -g clawhub
 clawhub login
-clawhub skill publish . --version 1.0.0 --changelog "OpenClaw AIDLC port"
+clawhub skill publish . \
+  --slug everwood-aidlc \
+  --name "Everwood AIDLC (OpenClaw)" \
+  --version 1.0.1 \
+  --changelog "docs: recommend everwood-aidlc install" \
+  --source-repo https://github.com/Everwood-Technologies/openclaw-aidlc \
+  --no-input
 ```
+
+One publish at a time. Avoid parallel `clawhub skill publish` runs (stale upload tickets).
 
 ## License
 

@@ -194,27 +194,50 @@ If `aidlc-sessions/CURRENT` or conversation history shows a prior run:
 
 ## Install / share
 
+### ClawHub (recommended)
+
+Registry slug: **`everwood-aidlc`**  
+(`openclaw-*` / `*-openclaw` slugs are reserved — do not use `openclaw-aidlc`.)
+
+```bash
+clawhub install everwood-aidlc
+# or
+openclaw skills install everwood-aidlc
+openclaw skills install everwood-aidlc --global
+```
+
+### From path or GitHub
+
 Workspace skill (this agent only):
 
 ```bash
-openclaw skills install /path/to/aidlc --force
+openclaw skills install /path/to/openclaw-aidlc --force
+openclaw skills install git:https://github.com/Everwood-Technologies/openclaw-aidlc.git --force
 ```
 
 Shared on this host for all agents:
 
 ```bash
-openclaw skills install /path/to/aidlc --global --force
+openclaw skills install /path/to/openclaw-aidlc --global --force
 ```
 
-Publish to ClawHub (requires `clawhub` CLI + login):
+### Publish to ClawHub
+
+Requires `clawhub` CLI + login. Use slug **`everwood-aidlc`** only:
 
 ```bash
 npm i -g clawhub
 clawhub login
-clawhub skill publish /path/to/aidlc --version 1.0.0 --changelog "OpenClaw AIDLC port"
+clawhub skill publish /path/to/openclaw-aidlc \
+  --slug everwood-aidlc \
+  --name "Everwood AIDLC (OpenClaw)" \
+  --version 1.0.1 \
+  --changelog "docs: ClawHub install via everwood-aidlc" \
+  --source-repo https://github.com/Everwood-Technologies/openclaw-aidlc \
+  --no-input
 ```
 
-Do not ship local `.venv` / `__pycache__`. Add a `.clawhubignore` (or equivalent) when publishing.
+Do not ship local `.venv` / `__pycache__`. Keep `.clawhubignore`. One publish at a time (avoid parallel runs / stale upload tickets).
 
 ## Reference files to load as needed
 
