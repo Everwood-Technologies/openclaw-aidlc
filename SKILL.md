@@ -1,6 +1,6 @@
 ---
 name: aidlc
-description: "Strict human-gated AIDLC planning for non-trivial software work, with per-gate deconfliction review, Redis gate snapshots, and Cache State Engine visibility."
+description: "Strict human-gated AIDLC planning for non-trivial software work, with per-gate deconfliction review."
 homepage: https://github.com/Everwood-Technologies/openclaw-aidlc
 metadata:
   {
@@ -8,7 +8,7 @@ metadata:
       {
         "emoji": "🧭",
         "requires": { "bins": ["python3", "bash"] },
-        "optional": { "bins": ["redis-cli", "docker", "brew"] },
+        "os": ["linux", "darwin", "win32"],
       },
   }
 ---
@@ -16,14 +16,42 @@ metadata:
 
 Strict AI-Driven Development Life Cycle for non-trivial software work.
 
-Human-gated Inception (Gates 0–4) before Construction. **Gate Deconfliction** runs before each human present. Workspace scratch is source of truth; optional Redis is a fail-soft visibility cache only.
+Human-gated Inception (Gates 0–4) before Construction. **Gate Deconfliction** runs before each human present. Workspace scratch under `aidlc-sessions/` is the sole content source of truth shipped with this skill.
+
+## Capabilities (transparency)
+
+This skill expects the agent to:
+
+- Run local `python3` / `bash` helpers shipped under `{baseDir}/scripts/`
+- **Write** session files under `{workspace}/aidlc-sessions/**` (gates, approvals, meta, deconfliction reports)
+- Read prior session artifacts for resume
+- Spawn **read-only** deconfliction subagents (review only; no production edits)
+
+It does **not** require Redis, a Cache UI, Docker, network services, or external publish steps for normal use.
+
+## Side effects warning
+
+Starting AIDLC creates/updates local files:
+
+```text
+{workspace}/aidlc-sessions/<uuid>/
+  session-id
+  meta.json
+  APPROVALS.md
+  gates/*.md
+  gates/*.deconfliction.md
+```
+
+Tell the user once at session init that planning state will be written there.  
+**Do not** put secrets, credentials, tokens, or sensitive customer data in gate artifacts.
 
 ## When to activate
 
 Activate for:
-- new features, multi-file changes, architecture decisions, significant refactors
-- medium/high complexity, ambiguous scope, or irreversible work
-- explicit triggers: `/aidlc`, `start AIDLC`, `Using AI-DLC`, Redis/state-machine requests
+- explicit triggers: `/aidlc`, `start AIDLC`, `Using AI-DLC`
+- user-confirmed non-trivial work: multi-file features, architecture choices, significant refactors, irreversible changes
+
+Do **not** auto-activate on vague “maybe refactor” chat. If scope is unclear, ask whether to run AIDLC before writing session files.
 
 Do **not** force full AIDLC for trivial one-liners unless the user asks.
 
@@ -34,16 +62,10 @@ Resolve `{baseDir}` as this skill directory. Resolve `{workspace}` as the active
 | Asset | Path |
 |-------|------|
 | Core workflow | `{baseDir}/references/core-workflow.md` |
-| Redis integration | `{baseDir}/references/redis-integration.md` |
-| Cache UI ops | `{baseDir}/references/cache-ui-README.md` |
-| Env examples | `{baseDir}/references/env.example` |
 | Gate templates | `{baseDir}/templates/gate-*.md` |
 | Deconfliction template | `{baseDir}/templates/gate-deconfliction.md` |
 | Session init | `{baseDir}/scripts/session-init.py` |
-| Gate lock + Redis snapshot | `{baseDir}/scripts/gate-lock.py` |
-| Redis snapshot writer | `{baseDir}/scripts/snapshot.py` |
-| Local Redis helper | `{baseDir}/scripts/redis-local.sh` |
-| Cache State Engine UI | `{baseDir}/assets/cache-ui/` |
+| Gate lock (scratch SoT) | `{baseDir}/scripts/gate-lock.py` |
 
 Workspace scratch (content SoT):
 
@@ -64,7 +86,7 @@ Workspace scratch (content SoT):
 1. Enter planning mode. Do **not** write production code or make irreversible changes until Gate 4 is approved/locked.
 2. Load `{baseDir}/references/core-workflow.md` and follow it (includes Gate Deconfliction).
 3. If a prior session exists (`aidlc-sessions/CURRENT` or history), offer resume from the last approved gate.
-4. Otherwise init:
+4. Otherwise note the workspace write side effect, then init:
 
 ```bash
 python3 "{baseDir}/scripts/session-init.py" --root "{workspace}" --objective "<intent>" --json
@@ -137,7 +159,7 @@ Ordered steps, parallelism, agent usage, verification/acceptance criteria. Decon
 When the user explicitly approves (**Approve and Continue** or equivalent):
 
 1. Write/update the gate markdown under the session `gates/` dir (keep latest `.deconfliction.md` beside it).
-2. Lock scratch SoT + optional Redis visibility:
+2. Lock scratch SoT:
 
 ```bash
 python3 "{baseDir}/scripts/gate-lock.py" \
@@ -148,29 +170,8 @@ python3 "{baseDir}/scripts/gate-lock.py" \
   --objective "<intent>"
 ```
 
-3. Redis failures are **fail-soft** (log, continue). Scratch remains authoritative.
-4. `gate-lock.py` appends `APPROVALS.md`.
-5. Advance only after scratch lock succeeds.
-
-Gate keys:
-
-- `gate-0-context` → `aidlc:session:<uuid>:gates:0` (+ `context`, `state`)
-- `gate-1-assess` → `gates:1` + `state`
-- `gate-2-decompose` → `gates:2` + `state`
-- `gate-3-design` → `gates:3` + `state` + `decisions`
-- `gate-4-plan` → `gates:4` + `state`
-
-Direct snapshot CLI:
-
-```bash
-python3 "{baseDir}/scripts/snapshot.py" \
-  --session-id <uuid> \
-  --gate-key gate-0-context \
-  --artifact-file <path.md> \
-  --status approved
-```
-
-Requires `redis-cli` on PATH. Honors `REDIS_URL` (default `redis://127.0.0.1:6379/0`).
+3. `gate-lock.py` updates `meta.json` and appends `APPROVALS.md`.
+4. Advance only after scratch lock succeeds.
 
 ## Construction phase
 
@@ -194,32 +195,7 @@ If a new material decision appears, stop and re-enter the appropriate gate (**wi
 - Log decisions in session scratch so work can resume across sessions.
 - Deconfliction subagents review only — they do not approve or implement.
 - This skill takes precedence for non-trivial work when activated.
-- Redis is an **additive visibility cache only** — not resume SoT in v1.
-
-## Redis local + Cache State Engine
-
-Optional visibility stack:
-
-```bash
-bash "{baseDir}/scripts/redis-local.sh"
-bash "{baseDir}/scripts/redis-local.sh" status
-
-cd "{baseDir}/assets/cache-ui" && bash ./run.sh
-# → http://127.0.0.1:8787
-```
-
-`run.sh` creates a local `.venv` on first run (not shipped). Production: set `REDIS_URL` (prefer `rediss://` + auth). Do **not** point `redis-local.sh` at prod. Keep UI on localhost or behind separate auth.
-
-Key namespace:
-
-```text
-aidlc:session:<uuid>:context
-aidlc:session:<uuid>:state
-aidlc:session:<uuid>:gates:N
-aidlc:session:<uuid>:decisions
-```
-
-Reserved demo UUID `00000000-0000-4000-8000-000000000001` is rejected by the writer.
+- No Redis / Cache UI in this skill — workspace scratch only.
 
 ## Adaptive depth
 
@@ -230,8 +206,7 @@ Full depth for medium/high complexity or ambiguous requests. Collapse remaining 
 If `aidlc-sessions/CURRENT` or conversation history shows a prior run:
 
 1. Read `meta.json` + `gates/` + `APPROVALS.md` (+ any `*.deconfliction.md`)
-2. Optionally inspect Redis via Cache State Engine (visibility only)
-3. Offer resume from last approved gate instead of restarting
+2. Offer resume from last approved gate instead of restarting
 
 ## Install / share
 
@@ -249,22 +224,13 @@ openclaw skills install everwood-aidlc --global
 
 ### From path or GitHub
 
-Workspace skill (this agent only):
-
 ```bash
 openclaw skills install /path/to/openclaw-aidlc --force
 openclaw skills install git:https://github.com/Everwood-Technologies/openclaw-aidlc.git --force
-```
-
-Shared on this host for all agents:
-
-```bash
 openclaw skills install /path/to/openclaw-aidlc --global --force
 ```
 
 ### Publish to ClawHub
-
-Requires `clawhub` CLI + login. Use slug **`everwood-aidlc`** only:
 
 ```bash
 npm i -g clawhub
@@ -272,17 +238,14 @@ clawhub login
 clawhub skill publish /path/to/openclaw-aidlc \
   --slug everwood-aidlc \
   --name "Everwood AIDLC (OpenClaw)" \
-  --version 1.1.0 \
-  --changelog "feat: Gate Deconfliction reviewer subagent before each human gate" \
+  --version 1.2.0 \
+  --changelog "remove Redis/Cache UI; scratch-only SoT + Gate Deconfliction" \
   --source-repo https://github.com/Everwood-Technologies/openclaw-aidlc \
   --no-input
 ```
 
-Do not ship local `.venv` / `__pycache__`. Keep `.clawhubignore`. One publish at a time (avoid parallel runs / stale upload tickets).
+One publish at a time (avoid parallel runs / stale upload tickets).
 
 ## Reference files to load as needed
 
 - Always for process detail: `references/core-workflow.md`
-- Redis ops / keys / CLI: `references/redis-integration.md`
-- UI ops: `references/cache-ui-README.md`
-- Env shapes: `references/env.example`

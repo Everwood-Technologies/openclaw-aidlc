@@ -6,6 +6,17 @@
 
 The workflow adapts to the work. Use full depth for medium/high complexity or ambiguous requests. Collapse gates only when the user explicitly requests a lightweight path or the work is trivial.
 
+## Side effects (read this)
+
+Activating AIDLC **writes local workspace files** under:
+
+```text
+{workspace}/aidlc-sessions/<uuid>/
+```
+
+including gate markdown, deconfliction reports, `meta.json`, and `APPROVALS.md`.  
+Do not put secrets, credentials, or sensitive customer data in gate artifacts.
+
 ## Inception Phase (Planning)
 
 Always start here for non-trivial requests.
@@ -21,7 +32,7 @@ For **each** gate, the main agent must:
 5. **Stop** and wait for exactly:
    - **Approve and Continue**
    - **Request Changes: …**
-6. On approval → lock gate (scratch SoT + optional Redis). On request changes → revise only this gate and repeat from step 1.
+6. On approval → lock gate into workspace scratch. On request changes → revise only this gate and repeat from step 1.
 
 Do **not** present a gate to the human for approval until deconfliction has run for that draft (or the user explicitly waived it for a lightweight path).
 
@@ -136,5 +147,6 @@ Only after Gate 4 is locked:
 - Never write production code before the Execution Plan is approved.
 - Prefer explicit planning mode throughout Inception (no production edits).
 - Deconfliction subagents are reviewers only — they do not approve gates or write production code.
+- Workspace scratch under `aidlc-sessions/` is the only SoT shipped with this skill.
 - This process takes precedence for non-trivial work when the OpenClaw aidlc skill is active.
 - Keep the rule files under this skill `references/` editable so the user can evolve the process.

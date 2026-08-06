@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Lock an approved AIDLC gate artifact into session scratch and optionally Redis."""
+"""Lock an approved AIDLC gate artifact into session scratch (workspace SoT)."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -37,7 +36,6 @@ def resolve_session_dir(root: Path, session_id: str | None) -> tuple[str, Path]:
         if not current.is_file():
             raise FileNotFoundError("No CURRENT session; run session-init.py first")
         session_id = current.read_text(encoding="utf-8").strip()
-    # validate uuid
     session_id = str(uuid.UUID(session_id))
     session_dir = sessions / session_id
     if not session_dir.is_dir():
@@ -46,7 +44,7 @@ def resolve_session_dir(root: Path, session_id: str | None) -> tuple[str, Path]:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Lock approved AIDLC gate + optional Redis snapshot")
+    p = argparse.ArgumentParser(description="Lock approved AIDLC gate into session scratch")
     p.add_argument("--root", default=os.environ.get("OPENCLAW_WORKSPACE") or str(Path.cwd()))
     p.add_argument("--session-id", default="")
     p.add_argument("--gate", required=True, help="0..4 or gate-N-name")
@@ -54,8 +52,6 @@ def main() -> int:
     p.add_argument("--status", choices=("approved", "soft-approved"), default="approved")
     p.add_argument("--objective", default="")
     p.add_argument("--linear-issue", default="")
-    p.add_argument("--skip-redis", action="store_true")
-    p.add_argument("--redis-url", default=os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0"))
     args = p.parse_args()
 
     root = Path(args.root).resolve()
@@ -80,7 +76,6 @@ def main() -> int:
     out_path = gates_dir / out_name
     out_path.write_text(artifact, encoding="utf-8")
 
-    # Update meta
     meta_path = session_dir / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
     gate_n = int(gate_key.split("-")[1])
@@ -96,49 +91,14 @@ def main() -> int:
     )
     if args.objective:
         meta["objective"] = args.objective
+    if args.linear_issue:
+        meta["linear_issue"] = args.linear_issue
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
     approvals = session_dir / "APPROVALS.md"
     with approvals.open("a", encoding="utf-8") as fh:
         fh.write(f"## {gate_key} — {args.status} @ {utc_now()}\n\n")
         fh.write(f"Artifact: `gates/{out_name}`\n\n")
-
-    redis_result = {"skipped": True}
-    if not args.skip_redis:
-        snap = Path(__file__).resolve().parent / "snapshot.py"
-        cmd = [
-            sys.executable,
-            str(snap),
-            "--session-id",
-            session_id,
-            "--gate-key",
-            gate_key,
-            "--artifact-file",
-            str(out_path),
-            "--status",
-            args.status,
-            "--scratch-name",
-            out_name,
-            "--redis-url",
-            args.redis_url,
-        ]
-        if args.objective:
-            cmd.extend(["--objective", args.objective])
-        if args.linear_issue:
-            cmd.extend(["--linear-issue", args.linear_issue])
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            try:
-                redis_result = json.loads(proc.stdout or "{}")
-            except json.JSONDecodeError:
-                redis_result = {
-                    "ok": False,
-                    "error": (proc.stderr or proc.stdout or "snapshot failed").strip(),
-                    "exit": proc.returncode,
-                }
-            # fail-soft: never fail gate lock because Redis is down
-        except Exception as exc:  # noqa: BLE001
-            redis_result = {"ok": False, "error": str(exc), "fail_soft": True}
 
     print(
         json.dumps(
@@ -148,7 +108,6 @@ def main() -> int:
                 "gate_key": gate_key,
                 "artifact_path": str(out_path),
                 "meta": meta,
-                "redis": redis_result,
             },
             indent=2,
         )
