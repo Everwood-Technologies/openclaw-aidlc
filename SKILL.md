@@ -1,6 +1,6 @@
 ---
 name: aidlc
-description: "Strict human-gated AIDLC planning for non-trivial software work, with Redis gate snapshots and Cache State Engine visibility."
+description: "Strict human-gated AIDLC planning for non-trivial software work, with per-gate deconfliction review, Redis gate snapshots, and Cache State Engine visibility."
 homepage: https://github.com/Everwood-Technologies/openclaw-aidlc
 metadata:
   {
@@ -16,7 +16,7 @@ metadata:
 
 Strict AI-Driven Development Life Cycle for non-trivial software work.
 
-Human-gated Inception (Gates 0–4) before Construction. Workspace scratch is source of truth; optional Redis is a fail-soft visibility cache only.
+Human-gated Inception (Gates 0–4) before Construction. **Gate Deconfliction** runs before each human present. Workspace scratch is source of truth; optional Redis is a fail-soft visibility cache only.
 
 ## When to activate
 
@@ -38,6 +38,7 @@ Resolve `{baseDir}` as this skill directory. Resolve `{workspace}` as the active
 | Cache UI ops | `{baseDir}/references/cache-ui-README.md` |
 | Env examples | `{baseDir}/references/env.example` |
 | Gate templates | `{baseDir}/templates/gate-*.md` |
+| Deconfliction template | `{baseDir}/templates/gate-deconfliction.md` |
 | Session init | `{baseDir}/scripts/session-init.py` |
 | Gate lock + Redis snapshot | `{baseDir}/scripts/gate-lock.py` |
 | Redis snapshot writer | `{baseDir}/scripts/snapshot.py` |
@@ -54,12 +55,14 @@ Workspace scratch (content SoT):
     meta.json
     APPROVALS.md
     gates/
+      <gate>.md
+      <gate>.deconfliction.md
 ```
 
 ## Immediate actions on activation
 
 1. Enter planning mode. Do **not** write production code or make irreversible changes until Gate 4 is approved/locked.
-2. Load `{baseDir}/references/core-workflow.md` and follow it.
+2. Load `{baseDir}/references/core-workflow.md` and follow it (includes Gate Deconfliction).
 3. If a prior session exists (`aidlc-sessions/CURRENT` or history), offer resume from the last approved gate.
 4. Otherwise init:
 
@@ -71,12 +74,48 @@ python3 "{baseDir}/scripts/session-init.py" --root "{workspace}" --objective "<i
 
 ## Gated process (Inception)
 
-Complete gates **in order**. After each gate artifact, present it and stop with exactly two options:
+Complete gates **in order**. For **each** gate:
 
-- **Approve and Continue**
-- **Request Changes: …**
+1. Draft the gate artifact (templates under `{baseDir}/templates/`).
+2. **Run Gate Deconfliction** (required — see below).
+3. Revise draft if issues found; re-deconflict after material edits.
+4. Present **gate artifact + short deconfliction summary** to the human.
+5. Stop with exactly two options:
+   - **Approve and Continue**
+   - **Request Changes: …**
 
-Use templates under `{baseDir}/templates/` when helpful.
+### Gate Deconfliction (before every human present)
+
+**Goal:** Catch contradictions, open questions, missing constraints, and weak option tradeoffs before approval.
+
+**Default mechanism:** spawn an isolated reviewer subagent, then wait for its report.
+
+```text
+sessions_spawn(
+  taskName="aidlc-deconflict-<gate-id>",
+  mode="run",
+  context="isolated",
+  task="AIDLC Gate Deconfliction reviewer (read-only). Gate=<id>, session=<uuid>, objective=<…>.
+        Review current draft vs prior locked gates. Do not implement or approve.
+        Structured report per templates/gate-deconfliction.md:
+        contradictions, open questions, missing constraints, option tradeoffs,
+        cross-gate drift, suggested revisions, residual risks, verdict clean|issues-found.
+        Draft: <paste or path>"
+)
+→ sessions_yield until complete
+→ write report to aidlc-sessions/<uuid>/gates/<gate>.deconfliction.md
+→ merge fixes into gate draft; re-run if material changes
+→ present gate + summary to human
+```
+
+Use template `{baseDir}/templates/gate-deconfliction.md`.
+
+**Rules:**
+- Deconfliction is **advisory**. Only the human approves.
+- Reviewer must **not** write production code or lock gates.
+- If subagent spawn fails: run the same checklist inline as `DECONFLICTION (self-review)` — do not skip silently.
+- User may explicitly waive deconfliction on a lightweight path; note the waiver in the gate artifact.
+- On **Request Changes**, revise the gate and **re-run** deconfliction before re-presenting.
 
 ### Gate 0 — Context Snapshot
 Intent & success criteria; greenfield vs brownfield; constraints; existing assets; open questions.
@@ -88,16 +127,16 @@ Complexity (Low / Medium / High); risks; dependencies; recommended depth: full /
 Units of Work with dependencies; suggested owner: OpenClaw subagent / human.
 
 ### Gate 3 — Design Decisions
-Key architectural/design choices with rationale.
+Key architectural/design choices with rationale. Deconfliction pays extra attention to option tradeoffs.
 
 ### Gate 4 — Execution Plan
-Ordered steps, parallelism, agent usage, verification/acceptance criteria.
+Ordered steps, parallelism, agent usage, verification/acceptance criteria. Deconfliction checks plan vs locked decisions.
 
 ## On approval of a gate
 
 When the user explicitly approves (**Approve and Continue** or equivalent):
 
-1. Write/update the gate markdown under the session `gates/` dir.
+1. Write/update the gate markdown under the session `gates/` dir (keep latest `.deconfliction.md` beside it).
 2. Lock scratch SoT + optional Redis visibility:
 
 ```bash
@@ -142,16 +181,18 @@ Only after Gate 4 is approved/locked:
 - Run builds/tests
 - Propose commits
 
-If a new material decision appears, stop and re-enter the appropriate gate.
+If a new material decision appears, stop and re-enter the appropriate gate (**with deconfliction**) rather than deciding silently.
 
 ## Hard rules
 
 - Never skip a human gate for non-trivial work.
+- Never skip Gate Deconfliction before presenting a gate (unless user explicitly waives it).
 - Never implement production changes before Gate 4 is locked.
 - Prefer planning tools / structured plans throughout Inception.
-- On **Request Changes**, revise only the current gate artifact.
+- On **Request Changes**, revise only the current gate artifact, then re-deconflict.
 - On **Approve and Continue**, lock current gate, then advance.
 - Log decisions in session scratch so work can resume across sessions.
+- Deconfliction subagents review only — they do not approve or implement.
 - This skill takes precedence for non-trivial work when activated.
 - Redis is an **additive visibility cache only** — not resume SoT in v1.
 
@@ -182,13 +223,13 @@ Reserved demo UUID `00000000-0000-4000-8000-000000000001` is rejected by the wri
 
 ## Adaptive depth
 
-Full depth for medium/high complexity or ambiguous requests. Collapse remaining gates only when the user explicitly wants a lightweight path or Gate 1 recommends minimal **and** the user approves that recommendation.
+Full depth for medium/high complexity or ambiguous requests. Collapse remaining gates only when the user explicitly wants a lightweight path or Gate 1 recommends minimal **and** the user approves that recommendation. Lightweight path may waive deconfliction only if the user says so explicitly.
 
 ## Resume
 
 If `aidlc-sessions/CURRENT` or conversation history shows a prior run:
 
-1. Read `meta.json` + `gates/` + `APPROVALS.md`
+1. Read `meta.json` + `gates/` + `APPROVALS.md` (+ any `*.deconfliction.md`)
 2. Optionally inspect Redis via Cache State Engine (visibility only)
 3. Offer resume from last approved gate instead of restarting
 
@@ -231,8 +272,8 @@ clawhub login
 clawhub skill publish /path/to/openclaw-aidlc \
   --slug everwood-aidlc \
   --name "Everwood AIDLC (OpenClaw)" \
-  --version 1.0.1 \
-  --changelog "docs: ClawHub install via everwood-aidlc" \
+  --version 1.1.0 \
+  --changelog "feat: Gate Deconfliction reviewer subagent before each human gate" \
   --source-repo https://github.com/Everwood-Technologies/openclaw-aidlc \
   --no-input
 ```

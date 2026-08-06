@@ -2,7 +2,7 @@
 
 OpenClaw port of Everwood **AIDLC** (AI-Driven Development Life Cycle).
 
-Strict human-gated planning (Gates 0–4) before Construction. Workspace scratch is content source of truth; optional Redis is a fail-soft visibility cache with a local Cache State Engine UI.
+Strict human-gated planning (Gates 0–4) before Construction, with a **Gate Deconfliction** reviewer subagent before each human approval. Workspace scratch is content source of truth; optional Redis is a fail-soft visibility cache with a local Cache State Engine UI.
 
 Sibling of [`grok-build-aidlc`](https://github.com/Everwood-Technologies/grok-build-aidlc) (Grok Build / machine-level config). This repo is the **OpenClaw skill package**.
 
@@ -43,8 +43,8 @@ Requires `python3` and `bash`. Optional: `redis-cli`, Docker or Homebrew Redis f
 ```text
 SKILL.md                 # OpenClaw skill entry (agent instructions)
 scripts/                 # session-init, gate-lock, snapshot, redis-local
-templates/               # gate-0 … gate-4 markdown templates
-references/              # core workflow, Redis notes, cache-ui README, env example
+templates/               # gate-0 … gate-4 + gate-deconfliction templates
+references/              # core workflow (incl. deconfliction), Redis notes, cache-ui README, env example
 assets/cache-ui/         # read-only Cache State Engine SPA
 .clawhubignore           # exclude .venv / pycache on ClawHub publish
 ```
